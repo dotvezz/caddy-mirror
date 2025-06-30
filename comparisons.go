@@ -27,16 +27,16 @@ func (ll *LogLevel) UnmarshalJSON(b []byte) error {
 type JQQuery string
 
 type ComparisonConfig struct {
-	Status      bool      `json:"status"`
-	CompareBody bool      `json:"compare_body"`
-	Headers     []string  `json:"compare_headers"`
-	CompareJQ   []JQQuery `json:"compare_jq"`
+	Status      bool      `json:"status,omitempty"`
+	CompareBody bool      `json:"compare_body,omitempty"`
+	Headers     []string  `json:"compare_headers,omitempty"`
+	CompareJQ   []JQQuery `json:"compare_jq,omitempty"`
 	compareJQ   []*gojq.Query
 }
 
 type ReportingConfig struct {
-	NoLog    bool      `json:"no_log"`
-	LogLevel *LogLevel `json:"log_level"`
+	NoLog    bool      `json:"no_log,omitempty"`
+	LogLevel *LogLevel `json:"log_level,omitempty"`
 }
 
 func (h *Handler) compare(primaryBS, shadowBS []byte) {
