@@ -67,12 +67,12 @@ func (h *Handler) Provision(ctx caddy.Context) (err error) {
 
 func (h *Handler) provisionHandlers(ctx caddy.Context) (err error) {
 	var mod any
-	mod, err = ctx.LoadModuleByID("http.handlers.subroute", h.ShadowJSON)
+	mod, err = ctx.LoadModuleByID("http.handlers.subroute", h.ShadowRaw)
 	if err != nil {
 		return fmt.Errorf("error loading shadow module: %w", err)
 	}
 	h.shadow = mod.(caddyhttp.MiddlewareHandler)
-	mod, err = ctx.LoadModuleByID("http.handlers.subroute", h.PrimaryJSON)
+	mod, err = ctx.LoadModuleByID("http.handlers.subroute", h.PrimaryRaw)
 	if err != nil {
 		return fmt.Errorf("error loading primary module: %w", err)
 	}

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"maps"
@@ -14,6 +13,11 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+)
+
+var (
+	_ caddy.Provisioner           = (*Handler)(nil)
+	_ caddyhttp.MiddlewareHandler = (*Handler)(nil)
 )
 
 var (
@@ -29,24 +33,20 @@ type Handler struct {
 	ComparisonConfig
 	ReportingConfig
 
+	MetricsName string `json:"metrics_name"`
+	metrics     metrics
+
+	ShadowRaw       json.RawMessage `json:"shadow"`
+	PrimaryRaw      json.RawMessage `json:"primary"`
 	shadow, primary caddyhttp.MiddlewareHandler
 
-	Timeout string `json:"timeout"`
+	Timeout string `json:"timeout,omitempty"`
 	timeout time.Duration
 
-	PrimaryJSON json.RawMessage `json:"primary_json"`
-	ShadowJSON  json.RawMessage `json:"shadow_json"`
-
-	MetricsName string `json:"metrics_name"`
-
 	slogger *slog.Logger
-
-	now func() time.Time
-
-	metrics metrics
+	now     func() time.Time
 }
 
-// CaddyModule returns the Caddy module information.
 func (h Handler) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "http.handlers.shadow",
@@ -54,18 +54,17 @@ func (h Handler) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
-// ServeHTTP implements caddyhttp.MiddlewareHandler
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) (err error) {
-	// Strip the incoming request context of any pre-existing canceler
-	// to avoid one handler canceling the context before the other is finished.
-	primaryCtx := context.WithoutCancel(r.Context())
+	primaryCtx := r.Context()
 
-	// Clone the underlying caddy vars for the shadowed request context
-	// because the underlying map is not concurrency safe
-	vars := maps.Clone(primaryCtx.Value(caddyhttp.VarsCtxKey).(map[string]any))
-	shadowCtx := context.WithValue(primaryCtx, caddyhttp.VarsCtxKey, vars)
+	// The vars map isn't concurrency safe, so we'll clone it for the shadowed request
+	shadowCtx := context.WithValue(
+		primaryCtx,
+		caddyhttp.VarsCtxKey,
+		maps.Clone(primaryCtx.Value(caddyhttp.VarsCtxKey).(map[string]any)),
+	)
 
-	{ // Make sure that both request contexts get canceled when we're done with them
+	{ // Make sure that both request contexts get timeouts and cancel when we're done with them
 		var cancelShadow, cancelPrimary context.CancelFunc
 		shadowCtx, cancelShadow = context.WithTimeout(shadowCtx, h.timeout)
 		primaryCtx, cancelPrimary = context.WithTimeout(primaryCtx, h.timeout)
@@ -73,66 +72,73 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		defer cancelPrimary()
 	}
 
-	// Prepare buffers in case we need them later for performing comparisons on response bodies
-	primaryBuf := bufferPool.Get().(*bytes.Buffer)
-	shadowBuf := bufferPool.Get().(*bytes.Buffer)
-	defer bufferPool.Put(primaryBuf)
-	defer bufferPool.Put(shadowBuf)
-	primaryBuf.Reset()
-	shadowBuf.Reset()
+	var primaryBuf, shadowBuf *bytes.Buffer
+	if h.shouldCompare() { // Only prepare buffers if we anticipate needing them for response comparison
+		primaryBuf = bufferPool.Get().(*bytes.Buffer)
+		shadowBuf = bufferPool.Get().(*bytes.Buffer)
+		defer bufferPool.Put(primaryBuf)
+		defer bufferPool.Put(shadowBuf)
+		primaryBuf.Reset()
+		shadowBuf.Reset()
+	}
 
-	primaryRec := caddyhttp.NewResponseRecorder(w, primaryBuf, h.shouldBuffer)
-	shadowRec := caddyhttp.NewResponseRecorder(&NopResponseWriter{}, shadowBuf, h.shouldBuffer)
+	pRecorder := caddyhttp.NewResponseRecorder(w, primaryBuf, h.shouldBuffer)
+	sRecorder := caddyhttp.NewResponseRecorder(&NopResponseWriter{}, shadowBuf, h.shouldBuffer)
 
 	// Clone the request to help ensure that concurrent upstream handlers don't step on each other
-	primaryR := r.Clone(primaryCtx)
-	shadowR := r.Clone(shadowCtx)
+	pr := r.Clone(primaryCtx)
+	sr := r.Clone(shadowCtx)
 
-	if r.Body != nil {
-		// Multiplex the request body across cloned requests if it's present, since r.Clone can only do a
-		// shallow clone of the body
+	if r.Body != nil { // Body is strictly read-once, can't be cloned. So we multiplex it to shadow with io.TeeReader
 		reqBuf := bufferPool.Get().(*bytes.Buffer)
 		reqBuf.Reset()
 		defer bufferPool.Put(reqBuf)
 
 		tee := io.TeeReader(r.Body, reqBuf)
-		primaryR.Body = io.NopCloser(tee)
-		shadowR.Body = io.NopCloser(reqBuf)
+		pr.Body = io.NopCloser(tee)
+		sr.Body = io.NopCloser(reqBuf)
 	}
 
 	wg := sync.WaitGroup{}
-	wg.Add(2)
-
-	// Handle the two requests concurrently
-	go func() {
-		err2 := h.requestProcessor("primary", h.primary)(primaryRec, primaryR, next)
-		if err2 != nil {
-			err = errors.Join(err, err2)
+	wg.Add(1)
+	go func() { // Handle only the shadowed request asynchronously
+		defer wg.Done()
+		sErr := h.requestProcessor("shadow", h.shadow)(sRecorder, sr, next)
+		if sErr != nil { // TODO: Make sure that this error is handled as idiomatically and safely as possible
+			h.slogger.Error("shadow_handler_error", slog.String("error", sErr.Error()))
 		}
-		wg.Done()
-	}()
-	go func() {
-		err2 := h.requestProcessor("shadow", h.shadow)(shadowRec, shadowR, next)
-		if err2 != nil {
-			err = errors.Join(err, err2)
-		}
-		wg.Done()
 	}()
 
-	wg.Wait()
-
-	// If we didn't buffer, nothing left to do. Everything after here is for body comparison.
-	if !primaryRec.Buffered() {
+	err = h.requestProcessor("primary", h.primary)(pRecorder, pr, next)
+	if err != nil {
 		return err
 	}
 
-	primaryBS := primaryRec.Buffer().Bytes()
-	if h.CompareBody || h.CompareJQ != nil {
-		h.compare(primaryBS, shadowRec.Buffer().Bytes())
+	var pBytes []byte
+	if pRecorder.Buffered() {
+		// We don't want the shadowed request to block sending any response downstream. So here we send the primary response
+		// without waiting for the shadowed request.
+		pBytes = pRecorder.Buffer().Bytes()
+		w.WriteHeader(pRecorder.Status())
+
+		// I think the best thing to do is sit on this error until we've finished handling the shadowed request.
+		// A failure to write downstream (client disconnect, etc) doesn't reflect on the shadowed handler and shouldn't be
+		// allowed to impact handling the shadowed request, getting metrics, doing comparisons, etc.
+		_, err = w.Write(pBytes)
 	}
 
-	w.WriteHeader(primaryRec.Status())
-	_, err = w.Write(primaryBS)
+	// Even if we're not comparing responses, we don't want to let the shadowed request context get prematurely
+	// canceled, so we'll wait for it to finish before moving on.
+	wg.Wait()
+
+	if h.shouldCompare() {
+		var sBytes []byte
+		if sRecorder.Buffered() {
+			sBytes = sRecorder.Buffer().Bytes()
+		}
+		h.compare(pBytes, sBytes)
+	}
+
 	return err
 }
 
@@ -170,10 +176,9 @@ func (h *Handler) requestProcessor(name string, inner caddyhttp.MiddlewareHandle
 }
 
 func (h *Handler) shouldBuffer(status int, _ http.Header) bool {
-	return status >= 200 && status < 300 && (len(h.compareJQ) > 0 || h.CompareBody)
+	return status >= 200 && status < 300 && h.shouldCompare()
 }
 
-var (
-	_ caddy.Provisioner           = (*Handler)(nil)
-	_ caddyhttp.MiddlewareHandler = (*Handler)(nil)
-)
+func (h *Handler) shouldCompare() bool {
+	return h.CompareBody || len(h.compareJQ) > 0
+}

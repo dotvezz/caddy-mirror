@@ -3,7 +3,7 @@ package shadow
 import (
 	"encoding/json"
 	"fmt"
-	
+
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
@@ -27,12 +27,12 @@ func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 			}
 
 			if handlerName == "primary" {
-				hnd.PrimaryJSON, err = json.Marshal(innerHnd)
+				hnd.PrimaryRaw, err = json.Marshal(innerHnd)
 				if err != nil {
 					return nil, fmt.Errorf("error marshaling %s: %w", handlerName, err)
 				}
 			} else {
-				hnd.ShadowJSON, err = json.Marshal(innerHnd)
+				hnd.ShadowRaw, err = json.Marshal(innerHnd)
 				if err != nil {
 					return nil, fmt.Errorf("error marshaling %s: %w", handlerName, err)
 				}
@@ -75,10 +75,10 @@ func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 		}
 	}
 
-	if hnd.PrimaryJSON == nil {
+	if hnd.PrimaryRaw == nil {
 		return nil, fmt.Errorf("primary handler is required")
 	}
-	if hnd.ShadowJSON == nil {
+	if hnd.ShadowRaw == nil {
 		return nil, fmt.Errorf("shadow handler is required")
 	}
 	return hnd, nil
