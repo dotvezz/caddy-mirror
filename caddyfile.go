@@ -40,9 +40,9 @@ func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 		case "compare_body":
 			hnd.ComparisonConfig.CompareBody = true
 		case "compare_status":
-			hnd.ComparisonConfig.Status = true
+			hnd.ComparisonConfig.CompareStatus = true
 		case "compare_headers":
-			hnd.ComparisonConfig.Headers = h.RemainingArgs()
+			hnd.ComparisonConfig.CompareHeaders = h.RemainingArgs()
 		case "compare_jq":
 			args := h.RemainingArgs()
 			if len(args) < 1 {

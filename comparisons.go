@@ -3,7 +3,9 @@ package shadow
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
+	"net/http"
 	"slices"
 
 	"github.com/itchyny/gojq"
@@ -27,16 +29,39 @@ func (ll *LogLevel) UnmarshalJSON(b []byte) error {
 type JQQuery string
 
 type ComparisonConfig struct {
-	Status      bool      `json:"status,omitempty"`
-	CompareBody bool      `json:"compare_body,omitempty"`
-	Headers     []string  `json:"compare_headers,omitempty"`
-	CompareJQ   []JQQuery `json:"compare_jq,omitempty"`
-	compareJQ   []*gojq.Query
+	CompareStatus  bool      `json:"compare_status,omitempty"`
+	CompareBody    bool      `json:"compare_body,omitempty"`
+	CompareHeaders []string  `json:"compare_headers,omitempty"`
+	CompareJQ      []JQQuery `json:"compare_jq,omitempty"`
+	compareJQ      []*gojq.Query
 }
 
 type ReportingConfig struct {
 	NoLog    bool      `json:"no_log,omitempty"`
 	LogLevel *LogLevel `json:"log_level,omitempty"`
+}
+
+func (h *Handler) compareStatus(primaryStatus, shadowStatus int) {
+	if primaryStatus != shadowStatus {
+		h.slogger.Info("shadow_status_mismatch",
+			slog.Int("primary_status", primaryStatus),
+			slog.Int("shadow_status", shadowStatus),
+		)
+	}
+}
+
+func (h *Handler) compareHeaders(primaryH, shadowH http.Header) {
+	for _, k := range h.CompareHeaders {
+		ph, sh := primaryH.Values(k), shadowH.Values(k)
+		if slices.Equal(ph, sh) {
+			h.slogger.Info(
+				"shadow_header_mismatch",
+				slog.String("key", k),
+				slog.Any("primary_values", ph),
+				slog.Any("shadow_values", sh),
+			)
+		}
+	}
 }
 
 func (h *Handler) compare(primaryBS, shadowBS []byte) {

@@ -64,14 +64,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		maps.Clone(primaryCtx.Value(caddyhttp.VarsCtxKey).(map[string]any)),
 	)
 
-	{ // Make sure that both request contexts get timeouts and cancel when we're done with them
-		var cancelShadow, cancelPrimary context.CancelFunc
-		shadowCtx, cancelShadow = context.WithTimeout(shadowCtx, h.timeout)
-		primaryCtx, cancelPrimary = context.WithTimeout(primaryCtx, h.timeout)
-		defer cancelShadow()
-		defer cancelPrimary()
-	}
-
 	var primaryBuf, shadowBuf *bytes.Buffer
 	if h.shouldCompare() { // Only prepare buffers if we anticipate needing them for response comparison
 		primaryBuf = bufferPool.Get().(*bytes.Buffer)
@@ -127,16 +119,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		_, err = w.Write(pBytes)
 	}
 
-	// Even if we're not comparing responses, we don't want to let the shadowed request context get prematurely
-	// canceled, so we'll wait for it to finish before moving on.
-	wg.Wait()
-
 	if h.shouldCompare() {
-		var sBytes []byte
-		if sRecorder.Buffered() {
-			sBytes = sRecorder.Buffer().Bytes()
-		}
-		h.compare(pBytes, sBytes)
+		// If we're doing comparison, let's do it async so we can avoid blocking. This way downstream handlers and
+		// clients are able to know we're done with our ResponseWriter here.
+		go func() {
+			wg.Wait()
+			var sBytes []byte
+			if sRecorder.Buffered() {
+				sBytes = sRecorder.Buffer().Bytes()
+			}
+			h.compare(pBytes, sBytes)
+			h.compareHeaders(pRecorder.Header(), sRecorder.Header())
+			h.compareStatus(pRecorder.Status(), sRecorder.Status())
+		}()
 	}
 
 	return err
@@ -144,6 +139,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 
 func (h *Handler) requestProcessor(name string, inner caddyhttp.MiddlewareHandler) func(wr http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	return func(wr http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+		// Even though there may be a timeout provided by another handler, we really want to make sure we keep our
+		// goroutines tidy. We're enforcing a timeout on all request processing as mitigation for the possibility of
+		// goroutine leaks and connection leaks.
+		ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
+		defer cancel()
+		r = r.WithContext(ctx)
 		startedAt := h.now()
 		if h.MetricsName != "" {
 			if r.Body != nil {
