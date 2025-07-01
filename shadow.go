@@ -128,7 +128,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 			if sRecorder.Buffered() {
 				sBytes = sRecorder.Buffer().Bytes()
 			}
-			h.compare(pBytes, sBytes)
+			h.compareBody(pBytes, sBytes)
 			h.compareHeaders(pRecorder.Header(), sRecorder.Header())
 			h.compareStatus(pRecorder.Status(), sRecorder.Status())
 		}()
@@ -148,7 +148,7 @@ func (h *Handler) requestProcessor(name string, inner caddyhttp.MiddlewareHandle
 		startedAt := h.now()
 		if h.MetricsName != "" {
 			if r.Body != nil {
-				// Since the primary and shadow request bodies are sent through a tee, it's unfair to compare response
+				// Since the primary and shadow request bodies are sent through a tee, it's unfair to compareBody response
 				// timing using the original startedAt value. The shadow request body can never be fully transmitted
 				// before the primary, introducing unintended skew to the metrics.
 				//
@@ -174,12 +174,4 @@ func (h *Handler) requestProcessor(name string, inner caddyhttp.MiddlewareHandle
 		}
 		return err
 	}
-}
-
-func (h *Handler) shouldBuffer(status int, _ http.Header) bool {
-	return status >= 200 && status < 300 && h.shouldCompare()
-}
-
-func (h *Handler) shouldCompare() bool {
-	return h.CompareBody || len(h.compareJQ) > 0
 }

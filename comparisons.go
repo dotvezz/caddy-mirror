@@ -64,7 +64,7 @@ func (h *Handler) compareHeaders(primaryH, shadowH http.Header) {
 	}
 }
 
-func (h *Handler) compare(primaryBS, shadowBS []byte) {
+func (h *Handler) compareBody(primaryBS, shadowBS []byte) {
 	var match bool
 	if h.CompareJQ != nil {
 		match = h.compareJSON(primaryBS, shadowBS)
@@ -72,12 +72,17 @@ func (h *Handler) compare(primaryBS, shadowBS []byte) {
 		match = slices.Equal(primaryBS, shadowBS)
 	}
 
-	if match {
-		h.metrics.match.Inc()
-		return // no need to do anything else if we have a match
+	if h.MetricsName != "" {
+		if match {
+			h.metrics.match.Inc()
+		} else {
+			h.metrics.mismatch.Inc()
+		}
 	}
 
-	h.metrics.mismatch.Inc()
+	if match { // If we've matched, nothing left to do
+		return
+	}
 
 	if !h.NoLog {
 		h.slogger.Info("shadow_mismatch",
@@ -147,6 +152,16 @@ func (h *Handler) compareJSON(primaryBS, shadowBS []byte) bool {
 	return true
 }
 
-func (h *Handler) reportMismatch(primaryBS, shadowBS []byte) {
+func (h *Handler) shouldBuffer(status int, hdr http.Header) bool {
+	return status >= 200 &&
+		status < 300 &&
+		h.shouldCompare() &&
+		hdr.Get("Content-Encoding") == ""
+}
 
+func (h *Handler) shouldCompare() bool {
+	return h.CompareBody ||
+		len(h.compareJQ) > 0 ||
+		h.CompareStatus ||
+		len(h.CompareHeaders) > 0
 }

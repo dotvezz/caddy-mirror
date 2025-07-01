@@ -9,7 +9,7 @@ caddy-shadow is
 a [Shadow Testing](https://microsoft.github.io/code-with-engineering-playbook/automated-testing/shadow-testing/) module
 for Caddy 2, with full Caddyfile support.
 
-# Features
+## Features
 
 - Request Mirroring
     - Default 1:1 mirroring
@@ -23,6 +23,24 @@ for Caddy 2, with full Caddyfile support.
     - Configurable response header comparison
     - Response status comparison
 - Reporting features **(⚠️ Planned)**
+
+### Feature Wishlist (Feedback and ideas welcome!)
+
+In no particular order, the following feature goals are being actively considered as development moves forward, before
+a `v1.0.0` release.
+
+- Decoding compressed response bodies for comparison
+- Low-overhead response body comparison
+  - Currently, if response body comparison is enabled, this project buffers responses and compares them as `[]byte`.
+  - Ideally, we'd be able to do (at least optionally) perform direct comparisons as the response is streamed, without
+    buffering
+- Reporting for response comparisons (matches, mismatches, etc)
+  - Would love to get feedback on how to best make reporting available in your workflows. Some ideas are...
+    - Response headers (`X-Shadow-Mismatch: true`, etc)
+    - Messages over a configurable message queue (Kafka, SQS, etc)
+    - Some companion API service that can run separately from your Caddy server and collate reports
+- Optional blocking rules
+- Benchmarks to help possible users understand any performance implications of using the module.
 
 ## Building with `xcaddy`
 
@@ -60,19 +78,35 @@ http://localhost:8080 {
 
 ### Caddyfile Options
 
-| Name              | Description                                                  | Required? | Arguments            | Default |
-|-------------------|--------------------------------------------------------------|-----------|----------------------|---------|
-| `primary`         | The primary/vcurrent definition                              | Required  | Subroute             |         |
-| `shadow`          | The shadow/vcurrent definition                               | Required  | Subroute             |         |
-| `compare_status`  | Enables response-status comparison                           | Optional  |                      | false   |
-| `compare_headers` | Enables response-status comparison                           | Optional  | List of header names | false   |
-| `compare_body`    | Enables response-body comparison                             | Optional  |                      | false   |
-| `compare_jq`      | Enables jq-based response comparison                         | Optional  | List of jq queries   |         |
-| `no_log`          | Disables logging for mismatched responses                    | Optional  |                      | false   |
-| `metrics`         | Enables metrics                                              | Optional  | Prefix/Namespace     |         |
-| `Timeout`         | Set the maximum time that the module will wait for responses | Optional  | Duration string      | 30s     |
+| Name              | Description                                           | Required? | Arguments            | Default |
+|-------------------|-------------------------------------------------------|-----------|----------------------|---------|
+| `primary`         | The primary/vcurrent definition                       | Required  | Subroute             |         |
+| `shadow`          | The shadow/vcurrent definition                        | Required  | Subroute             |         |
+| `compare_status`  | Enables response-status comparison                    | Optional  |                      | false   |
+| `compare_headers` | Enables response-status comparison                    | Optional  | List of header names | false   |
+| `compare_body`    | Enables response-body comparison                      | Optional  |                      | false   |
+| `compare_jq`      | Enables jq-based response comparison                  | Optional  | List of jq queries   |         |
+| `no_log`          | Disables logging for mismatched responses             | Optional  |                      | false   |
+| `metrics`         | Enables metrics                                       | Optional  | Prefix/Namespace     |         |
+| `shadow_timeout`  | Set the maximum time to wait for the shadowed request | Optional  | Duration string      | 30s     |
 
 ## Response Comparison
+
+> [!NOTE]
+> There are currently a few points to consider for response comparison.
+> - Response body comparisons are only possible for uncompressed responses.
+>   - One goal of the project is to support decompressing responses, but I want to get robust benchmarks in place
+>     before we do this.
+> - If comparison is enabled, responses are buffered and read as `[]byte`, which has some latency and memory
+>   implications, especially for large responses.
+>   - Probably not an issue for most JSON APIs.
+>   - One goal of the project is to establish benchmarks which set realistic expectations for anyone evaluating this
+>     as part of their Caddy deployment.
+> - In order to minimize overall latency experienced by downstream/clients, the primary response is streamed down
+>   as early as possible, without waiting for comparisons to complete.
+>   - This means we start goroutines which may outlive the original request handler's goroutine (if your shadow is
+>     slower than your primary). We take care not to leak them, but they can live roughly as long as the
+>     `shadow_timeout` config value.
 
 caddy-shadow provides a set of simple, optional features for comparing the shadowed response against the primary
 response.
