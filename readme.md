@@ -1,4 +1,4 @@
-# caddy-shadow
+# caddy-mirror
 
 > [!WARNING]
 > This project's configuration and behavior should be considered unstable until it reaches its first `v1.0.0` release.
