@@ -1,4 +1,4 @@
-package shadow
+package mirror
 
 import (
 	"github.com/itchyny/gojq"
@@ -179,7 +179,7 @@ func TestHandler_compareJSON(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "missing prop in shadow",
+			name: "missing prop in secondary",
 			fields: fields{
 				ComparisonConfig: ComparisonConfig{
 					compareJQ: []*gojq.Query{
@@ -215,7 +215,7 @@ func TestHandler_compareJSON(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "primary object, shadow string",
+			name: "primary object, secondary string",
 			fields: fields{
 				ComparisonConfig: ComparisonConfig{
 					compareJQ: []*gojq.Query{
@@ -287,7 +287,7 @@ func TestHandler_compareJSON(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "primary array, shadow string",
+			name: "primary array, secondary string",
 			fields: fields{
 				ComparisonConfig: ComparisonConfig{
 					compareJQ: []*gojq.Query{
@@ -305,7 +305,7 @@ func TestHandler_compareJSON(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "primary string, shadow array",
+			name: "primary string, secondary array",
 			fields: fields{
 				ComparisonConfig: ComparisonConfig{
 					compareJQ: []*gojq.Query{
@@ -323,7 +323,7 @@ func TestHandler_compareJSON(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "primary string, shadow bool",
+			name: "primary string, secondary bool",
 			fields: fields{
 				ComparisonConfig: ComparisonConfig{
 					compareJQ: []*gojq.Query{

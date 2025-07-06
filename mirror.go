@@ -1,4 +1,4 @@
-package shadow
+package mirror
 
 import (
 	"bytes"
@@ -36,11 +36,11 @@ type Handler struct {
 	MetricsName string `json:"metrics_name"`
 	metrics     metrics
 
-	ShadowRaw       json.RawMessage `json:"shadow"`
-	PrimaryRaw      json.RawMessage `json:"primary"`
-	shadow, primary caddyhttp.MiddlewareHandler
+	SecondaryRaw       json.RawMessage `json:"secondary"`
+	PrimaryRaw         json.RawMessage `json:"primary"`
+	secondary, primary caddyhttp.MiddlewareHandler
 
-	Timeout string `json:"timeout,omitempty"`
+	Timeout string `json:"secondary_timeout,omitempty"`
 	timeout time.Duration
 
 	slogger *slog.Logger
@@ -49,7 +49,7 @@ type Handler struct {
 
 func (h Handler) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
-		ID:  "http.handlers.shadow",
+		ID:  "http.handlers.mirror",
 		New: func() caddy.Module { return new(Handler) },
 	}
 }
@@ -57,15 +57,15 @@ func (h Handler) CaddyModule() caddy.ModuleInfo {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) (err error) {
 	primaryCtx := r.Context()
 
-	// The vars map isn't concurrency safe, so we'll clone it for the shadowed request
-	shadowCtx := context.WithValue(
+	// The vars map isn't concurrency safe, so we'll clone it for the mirrored request
+	secondaryCtx := context.WithValue(
 		primaryCtx,
 		caddyhttp.VarsCtxKey,
 		maps.Clone(primaryCtx.Value(caddyhttp.VarsCtxKey).(map[string]any)),
 	)
 
 	var primaryBuf, shadowBuf *bytes.Buffer
-	if h.shouldCompare() { // Only prepare buffers if we anticipate needing them for response comparison
+	if h.shouldCompare() { // Only prepare buffers if we anticipate needing them for secondary response comparison
 		primaryBuf = bufferPool.Get().(*bytes.Buffer)
 		shadowBuf = bufferPool.Get().(*bytes.Buffer)
 		defer bufferPool.Put(primaryBuf)
@@ -79,9 +79,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 
 	// Clone the request to help ensure that concurrent upstream handlers don't step on each other
 	pr := r.Clone(primaryCtx)
-	sr := r.Clone(shadowCtx)
+	sr := r.Clone(secondaryCtx)
 
-	if r.Body != nil { // Body is strictly read-once, can't be cloned. So we multiplex it to shadow with io.TeeReader
+	if r.Body != nil { // Body is strictly read-once, can't be cloned. So we multiplex it to secondary with io.TeeReader
 		reqBuf := bufferPool.Get().(*bytes.Buffer)
 		reqBuf.Reset()
 		defer bufferPool.Put(reqBuf)
@@ -93,11 +93,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	go func() { // Handle only the shadowed request asynchronously
+	go func() { // Handle only the secondary request asynchronously
 		defer wg.Done()
-		sErr := h.requestProcessor("shadow", h.shadow)(sRecorder, sr, next)
+		sErr := h.requestProcessor("secondary", h.secondary)(sRecorder, sr, next)
 		if sErr != nil { // TODO: Make sure that this error is handled as idiomatically and safely as possible
-			h.slogger.Error("shadow_handler_error", slog.String("error", sErr.Error()))
+			h.slogger.Error("secondary_handler_error", slog.String("error", sErr.Error()))
 		}
 	}()
 
@@ -108,27 +108,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 
 	var pBytes []byte
 	if pRecorder.Buffered() {
-		// We don't want the shadowed request to block sending any response downstream. So here we send the primary response
-		// without waiting for the shadowed request.
+		// We don't want the mirrored request to block sending a response downstream. So here we send the primary response
+		// *without* waiting for the secondary request to complete.
 		pBytes = pRecorder.Buffer().Bytes()
 		w.WriteHeader(pRecorder.Status())
-
-		// I think the best thing to do is sit on this error until we've finished handling the shadowed request.
-		// A failure to write downstream (client disconnect, etc) doesn't reflect on the shadowed handler and shouldn't be
-		// allowed to impact handling the shadowed request, getting metrics, doing comparisons, etc.
 		_, err = w.Write(pBytes)
 	}
 
 	if h.shouldCompare() {
-		// If we're doing comparison, let's do it async so we can avoid blocking. This way downstream handlers and
-		// clients are able to know we're done with our ResponseWriter here.
+		// If we're doing comparison, let's spin up a new goroutine so we can avoid blocking. This way downstream
+		// handlers and clients are able to know we're done with our ResponseWriter here.
 		go func() {
+			// Wait for the mirrored request to complete before attempting to compare.
 			wg.Wait()
 			var sBytes []byte
 			if sRecorder.Buffered() {
 				sBytes = sRecorder.Buffer().Bytes()
+				h.compareBody(pBytes, sBytes)
 			}
-			h.compareBody(pBytes, sBytes)
 			h.compareHeaders(pRecorder.Header(), sRecorder.Header())
 			h.compareStatus(pRecorder.Status(), sRecorder.Status())
 		}()
@@ -148,11 +145,11 @@ func (h *Handler) requestProcessor(name string, inner caddyhttp.MiddlewareHandle
 		startedAt := h.now()
 		if h.MetricsName != "" {
 			if r.Body != nil {
-				// Since the primary and shadow request bodies are sent through a tee, it's unfair to compareBody response
-				// timing using the original startedAt value. The shadow request body can never be fully transmitted
+				// Since the primary and secondary request bodies are sent through a tee, it's unfair to compare response
+				// timing using the original startedAt value. The secondary request body can never be fully transmitted
 				// before the primary, introducing unintended skew to the metrics.
 				//
-				// This FinishReadCloser lets us decouple the timing of primary and shadow handlers by re-setting
+				// This FinishReadCloser tries to make metrics fair for primary and secondary handlers by re-setting
 				// the startedAt value at the time the request body is fully transmitted.
 				r.Body = NewFinishReadCloser(r.Body, func() {
 					startedAt = h.now()

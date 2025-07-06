@@ -5,9 +5,7 @@
 > Any change before `v1.0.0` may be a breaking change. If you choose to incorporate this into your xcaddy build,
 > please use a tagged release and read release notes if you upgrade to a newer version.
 
-caddy-shadow is
-a [Shadow Testing](https://microsoft.github.io/code-with-engineering-playbook/automated-testing/shadow-testing/) module
-for Caddy 2, with full Caddyfile support.
+caddy-mirror is a Request Mirroring and [Shadow Testing](https://microsoft.github.io/code-with-engineering-playbook/automated-testing/shadow-testing/) module for Caddy 2, with full Caddyfile support.
 
 ## Features
 
@@ -17,7 +15,7 @@ for Caddy 2, with full Caddyfile support.
 - Optional response timing metrics for Prometheus
     - Primary/Shadow Time to First Byte
     - Primary/Shadow Total Response Time
-- Optional response comparison
+- Optional shadow testing via response comparison
     - Full response body comparison
     - Configurable selective comparison of JSON responses (powered by [itchyny/gojq](https://github.com/itchyny/gojq))
     - Configurable response header comparison
@@ -53,7 +51,7 @@ Caddy with this plugin included.
 
 ## Caddyfile
 
-caddy-shadow fully supports Caddyfile as well as native JSON configuration.
+caddy-mirror fully supports Caddyfile as well as native JSON configuration.
 
 ### Example File
 
@@ -63,13 +61,13 @@ caddy-shadow fully supports Caddyfile as well as native JSON configuration.
 }
 
 http://localhost:8080 {
-    shadow {
+    mirror {
         metrics shadow
         compare_body
         primary {
             reverse_proxy https://my-old-backend.com
         }
-        shadow {
+        secondary {
             reverse_proxy https://my-new-backend.com
         }
     }
@@ -78,17 +76,17 @@ http://localhost:8080 {
 
 ### Caddyfile Options
 
-| Name              | Description                                           | Required? | Arguments            | Default |
-|-------------------|-------------------------------------------------------|-----------|----------------------|---------|
-| `primary`         | The primary/vcurrent definition                       | Required  | Subroute             |         |
-| `shadow`          | The shadow/vcurrent definition                        | Required  | Subroute             |         |
-| `compare_status`  | Enables response-status comparison                    | Optional  |                      | false   |
-| `compare_headers` | Enables response-status comparison                    | Optional  | List of header names | false   |
-| `compare_body`    | Enables response-body comparison                      | Optional  |                      | false   |
-| `compare_jq`      | Enables jq-based response comparison                  | Optional  | List of jq queries   |         |
-| `no_log`          | Disables logging for mismatched responses             | Optional  |                      | false   |
-| `metrics`         | Enables metrics                                       | Optional  | Prefix/Namespace     |         |
-| `shadow_timeout`  | Set the maximum time to wait for the shadowed request | Optional  | Duration string      | 30s     |
+| Name                | Description                                          | Required? | Arguments            | Default |
+|---------------------|------------------------------------------------------|-----------|----------------------|---------|
+| `primary`           | The primary handler definition                       | Required  | Subroute             |         |
+| `secondary`         | The secondary handler definition                     | Required  | Subroute             |         |
+| `compare_status`    | Enables response-status comparison                   | Optional  |                      | false   |
+| `compare_headers`   | Enables response-status comparison                   | Optional  | List of header names | false   |
+| `compare_body`      | Enables response-body comparison                     | Optional  |                      | false   |
+| `compare_jq`        | Enables jq-based response comparison                 | Optional  | List of jq queries   |         |
+| `no_log`            | Disables logging for mismatched responses            | Optional  |                      | false   |
+| `metrics`           | Enables metrics                                      | Optional  | Prefix/Namespace     |         |
+| `secondary_timeout` | Set the maximum time to wait for the mirroed request | Optional  | Duration string      | 30s     |
 
 ## Response Comparison
 

@@ -1,4 +1,4 @@
-package shadow
+package mirror
 
 import (
 	"time"
@@ -25,13 +25,13 @@ func (m *metrics) provision(ctx caddy.Context, name string) {
 		Buckets:   prometheus.ExponentialBuckets(millisecond, 2, 16),
 	})
 	ctx.GetMetricsRegistry().Register(m.ttfb["primary"])
-	m.ttfb["shadow"] = prometheus.NewHistogram(prometheus.HistogramOpts{
+	m.ttfb["secondary"] = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: name,
 		Name:      "shadow_time_to_first_byte_seconds",
-		Help:      "Number of milliseconds before first byte of response from shadow",
+		Help:      "Number of milliseconds before first byte of response from secondary",
 		Buckets:   prometheus.ExponentialBuckets(millisecond, 2, 16),
 	})
-	ctx.GetMetricsRegistry().Register(m.ttfb["shadow"])
+	ctx.GetMetricsRegistry().Register(m.ttfb["secondary"])
 
 	m.totalTime = make(map[string]prometheus.Histogram, 2)
 	m.totalTime["primary"] = prometheus.NewHistogram(prometheus.HistogramOpts{
@@ -41,11 +41,11 @@ func (m *metrics) provision(ctx caddy.Context, name string) {
 		Buckets:   prometheus.ExponentialBuckets(millisecond*2, 2, 16),
 	})
 	ctx.GetMetricsRegistry().Register(m.totalTime["primary"])
-	m.totalTime["shadow"] = prometheus.NewHistogram(prometheus.HistogramOpts{
+	m.totalTime["secondary"] = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: name,
 		Name:      "shadow_total_time_seconds",
-		Help:      "Number of milliseconds for full response from shadow",
+		Help:      "Number of milliseconds for full response from secondary",
 		Buckets:   prometheus.ExponentialBuckets(millisecond*2, 2, 16),
 	})
-	ctx.GetMetricsRegistry().Register(m.totalTime["shadow"])
+	ctx.GetMetricsRegistry().Register(m.totalTime["secondary"])
 }

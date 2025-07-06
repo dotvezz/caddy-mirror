@@ -1,4 +1,4 @@
-package shadow
+package mirror
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 
 func init() {
 	caddy.RegisterModule(Handler{})
-	httpcaddyfile.RegisterHandlerDirective("shadow", ParseCaddyfile)
+	httpcaddyfile.RegisterHandlerDirective("mirror", ParseCaddyfile)
 }
 
 func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
@@ -20,7 +20,7 @@ func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 	for h.NextBlock(0) {
 		handlerName := h.Val()
 		switch handlerName {
-		case "primary", "shadow":
+		case "primary", "secondary":
 			innerHnd, err := httpcaddyfile.ParseSegmentAsSubroute(h.WithDispenser(h.NewFromNextSegment()))
 			if err != nil {
 				return nil, fmt.Errorf("error unmarshaling %s: %w", handlerName, err)
@@ -32,7 +32,7 @@ func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 					return nil, fmt.Errorf("error marshaling %s: %w", handlerName, err)
 				}
 			} else {
-				hnd.ShadowRaw, err = json.Marshal(innerHnd)
+				hnd.SecondaryRaw, err = json.Marshal(innerHnd)
 				if err != nil {
 					return nil, fmt.Errorf("error marshaling %s: %w", handlerName, err)
 				}
@@ -66,10 +66,10 @@ func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 				return nil, fmt.Errorf("metrics requires a prefix/namespace")
 			}
 			hnd.MetricsName = args[0]
-		case "timeout":
+		case "secondary_timeout":
 			args := h.RemainingArgs()
 			if len(args) < 1 {
-				return nil, fmt.Errorf("timeout requires duration")
+				return nil, fmt.Errorf("secondary_timeout requires duration")
 			}
 			hnd.Timeout = args[0]
 		}
@@ -78,8 +78,8 @@ func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 	if hnd.PrimaryRaw == nil {
 		return nil, fmt.Errorf("primary handler is required")
 	}
-	if hnd.ShadowRaw == nil {
-		return nil, fmt.Errorf("shadow handler is required")
+	if hnd.SecondaryRaw == nil {
+		return nil, fmt.Errorf("secondary handler is required")
 	}
 	return hnd, nil
 }

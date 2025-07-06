@@ -5,13 +5,13 @@
 
 http://localhost:8080 {
     route /new {
-        shadow {
+        mirror {
             metrics path_new
             compare_jq .id
             primary {
                 respond "{\"id\":\"foo\", \"done\":\"ok\"}"
             }
-            shadow {
+            secondary {
                 respond "{\"id\":\"bar\", \"done\":\"ok\"}"
             }
         }
