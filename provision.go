@@ -1,4 +1,4 @@
-package shadow
+package mirror
 
 import (
 	"fmt"
@@ -67,27 +67,27 @@ func (h *Handler) Provision(ctx caddy.Context) (err error) {
 
 func (h *Handler) provisionHandlers(ctx caddy.Context) (err error) {
 	var mod any
-	mod, err = ctx.LoadModuleByID("http.handlers.subroute", h.ShadowRaw)
+	mod, err = ctx.LoadModuleByID("http.handlers.subroute", h.SecondaryRaw)
 	if err != nil {
-		return fmt.Errorf("error loading shadow module: %w", err)
+		return fmt.Errorf("error loading secondary module: %w", err)
 	}
-	h.shadow = mod.(caddyhttp.MiddlewareHandler)
+	h.secondary = mod.(caddyhttp.MiddlewareHandler)
 	mod, err = ctx.LoadModuleByID("http.handlers.subroute", h.PrimaryRaw)
 	if err != nil {
 		return fmt.Errorf("error loading primary module: %w", err)
 	}
 	h.primary = mod.(caddyhttp.MiddlewareHandler)
 
-	if provisioner, ok := h.shadow.(caddy.Provisioner); ok {
+	if provisioner, ok := h.secondary.(caddy.Provisioner); ok {
 		err = provisioner.Provision(ctx)
 		if err != nil {
-			return fmt.Errorf("error provisioning shadow: %w", err)
+			return fmt.Errorf("error provisioning secondary: %w", err)
 		}
 	}
 	if provisioner, ok := h.primary.(caddy.Provisioner); ok {
 		err = provisioner.Provision(ctx)
 		if err != nil {
-			return fmt.Errorf("error provisioning shadow: %w", err)
+			return fmt.Errorf("error provisioning secondary: %w", err)
 		}
 	}
 
