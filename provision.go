@@ -23,6 +23,12 @@ func (h *Handler) Provision(ctx caddy.Context) (err error) {
 
 	h.now = time.Now
 
+	if h.MirrorRate == 0 { // default to 100 if it's empty/zero in the json.
+		h.MirrorRate = 1.0
+	} else { // 0.0 to 1.0 scale for mirror rate
+		h.MirrorRate = h.MirrorRate / 100
+	}
+
 	if len(h.CompareJQ) > 0 {
 		h.compareJQ = make([]*gojq.Query, len(h.CompareJQ))
 		for i, qStr := range h.CompareJQ {

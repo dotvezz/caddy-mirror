@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"maps"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -50,6 +51,8 @@ type Handler struct {
 	Timeout string `json:"secondary_timeout,omitempty"`
 	timeout time.Duration
 
+	MirrorRate float64 `json:"mirror_rate,omitempty"`
+
 	slogger *slog.Logger
 	now     func() time.Time
 }
@@ -62,6 +65,10 @@ func (h Handler) CaddyModule() caddy.ModuleInfo {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) (err error) {
+	if !h.shouldMirror() { // Fractional mirroring. If this returns false, we only call primary
+		return h.primary.ServeHTTP(w, r, next)
+	}
+
 	primaryCtx := r.Context()
 
 	// The vars map isn't concurrency safe, so we'll clone it for the mirrored request
@@ -171,5 +178,16 @@ func (h *Handler) requestProcessor(name string, inner caddyhttp.MiddlewareHandle
 			h.slogger.Error(name+"_handler_error", slog.String("error", err.Error()))
 		}
 		return err
+	}
+}
+
+func (h *Handler) shouldMirror() bool {
+	switch h.MirrorRate {
+	case 1:
+		return true
+	case 0:
+		return false
+	default:
+		return rand.Float64() < h.MirrorRate
 	}
 }

@@ -3,6 +3,8 @@ package mirror
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
@@ -36,6 +38,16 @@ func ParseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 				if err != nil {
 					return nil, fmt.Errorf("error marshaling %s: %w", handlerName, err)
 				}
+			}
+		case "mirror_rate":
+			args := h.RemainingArgs()
+			if len(args) < 1 {
+				return nil, fmt.Errorf("mirror_rate requires a rate")
+			}
+			var err error
+			hnd.MirrorRate, err = strconv.ParseFloat(strings.Trim(args[0], "%"), 64)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing mirror_rate: %w", err)
 			}
 		case "compare_body":
 			hnd.ComparisonConfig.CompareBody = true
