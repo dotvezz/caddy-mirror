@@ -11,7 +11,7 @@ caddy-mirror is a Request Mirroring and [Shadow Testing](https://microsoft.githu
 
 - Request Mirroring
     - Default 1:1 mirroring
-    - Configurable fractional mirroring **(⚠️ Planned)**
+    - Configurable fractional mirroring
 - Optional response timing metrics for Prometheus
     - Primary/Shadow Time to First Byte
     - Primary/Shadow Total Response Time
@@ -76,17 +76,18 @@ http://localhost:8080 {
 
 ### Caddyfile Options
 
-| Name                | Description                                          | Required? | Arguments            | Default |
-|---------------------|------------------------------------------------------|-----------|----------------------|---------|
-| `primary`           | The primary handler definition                       | Required  | Subroute             |         |
-| `secondary`         | The secondary handler definition                     | Required  | Subroute             |         |
-| `compare_status`    | Enables response-status comparison                   | Optional  |                      | false   |
-| `compare_headers`   | Enables response-status comparison                   | Optional  | List of header names | false   |
-| `compare_body`      | Enables response-body comparison                     | Optional  |                      | false   |
-| `compare_jq`        | Enables jq-based response comparison                 | Optional  | List of jq queries   |         |
-| `no_log`            | Disables logging for mismatched responses            | Optional  |                      | false   |
-| `metrics`           | Enables metrics                                      | Optional  | Prefix/Namespace     |         |
-| `secondary_timeout` | Set the maximum time to wait for the mirroed request | Optional  | Duration string      | 30s     |
+| Name                | Description                                               | Required? | Arguments            | Default |
+|---------------------|-----------------------------------------------------------|-----------|----------------------|---------|
+| `primary`           | The primary handler definition                            | Required  | Subroute             |         |
+| `secondary`         | The secondary handler definition                          | Required  | Subroute             |         |
+| `mirror_rate`       | Rate of requests which should be mirrored (-1 to disable) | Optional  | Percentage           | 100%    |
+| `compare_status`    | Enables response-status comparison                        | Optional  |                      | false   |
+| `compare_headers`   | Enables response-status comparison                        | Optional  | List of header names | false   |
+| `compare_body`      | Enables response-body comparison                          | Optional  |                      | false   |
+| `compare_jq`        | Enables jq-based response comparison                      | Optional  | List of jq queries   |         |
+| `no_log`            | Disables logging for mismatched responses                 | Optional  |                      | false   |
+| `metrics`           | Enables metrics                                           | Optional  | Prefix/Namespace     |         |
+| `secondary_timeout` | Set the maximum time to wait for the mirroed request      | Optional  | Duration string      | 30s     |
 
 ## Response Comparison
 
