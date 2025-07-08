@@ -82,13 +82,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	sr := r.Clone(secondaryCtx)
 
 	if r.Body != nil { // Body is strictly read-once, can't be cloned. So we multiplex it to secondary with io.TeeReader
-		reqBuf := bufferPool.Get().(*bytes.Buffer)
-		reqBuf.Reset()
-		defer bufferPool.Put(reqBuf)
-
-		tee := io.TeeReader(r.Body, reqBuf)
+		pipR, pipW := io.Pipe()
+		tee := io.TeeReader(r.Body, pipW)
 		pr.Body = io.NopCloser(tee)
-		sr.Body = io.NopCloser(reqBuf)
+		sr.Body = io.NopCloser(pipR)
 	}
 
 	wg := sync.WaitGroup{}
