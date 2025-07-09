@@ -7,12 +7,14 @@ http://localhost:8080 {
     route /new {
         mirror {
             metrics path_new
-            compare_jq .id
+            compare_jq .data
             primary {
-                respond "{\"id\":\"foo\", \"done\":\"ok\"}"
+                uri replace /new /post
+                reverse_proxy https://httpbin.org
             }
             secondary {
-                respond "{\"id\":\"bar\", \"done\":\"ok\"}"
+                uri replace /new /post
+                reverse_proxy https://httpbin.org
             }
         }
     }
