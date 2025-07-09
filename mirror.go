@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -20,13 +19,21 @@ var (
 	_ caddyhttp.MiddlewareHandler = (*Handler)(nil)
 )
 
-var (
-	bufferPool = sync.Pool{
-		New: func() any {
-			return new(bytes.Buffer)
-		},
-	}
-)
+var bufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
+
+func getBuf() *bytes.Buffer {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	return buf
+}
+
+func putBuf(buf *bytes.Buffer) {
+	bufferPool.Put(buf)
+}
 
 // Handler runs multiple handlers and aggregates their results
 type Handler struct {
@@ -66,12 +73,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 
 	var primaryBuf, shadowBuf *bytes.Buffer
 	if h.shouldCompare() { // Only prepare buffers if we anticipate needing them for secondary response comparison
-		primaryBuf = bufferPool.Get().(*bytes.Buffer)
-		shadowBuf = bufferPool.Get().(*bytes.Buffer)
-		defer bufferPool.Put(primaryBuf)
-		defer bufferPool.Put(shadowBuf)
-		primaryBuf.Reset()
-		shadowBuf.Reset()
+		primaryBuf, shadowBuf = getBuf(), getBuf()
+		defer putBuf(primaryBuf)
+		defer putBuf(shadowBuf)
 	}
 
 	pRecorder := caddyhttp.NewResponseRecorder(w, primaryBuf, h.shouldBuffer)
@@ -81,11 +85,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	pr := r.Clone(primaryCtx)
 	sr := r.Clone(secondaryCtx)
 
-	if r.Body != nil { // Body is strictly read-once, can't be cloned. So we multiplex it to secondary with io.TeeReader
-		pipR, pipW := io.Pipe()
-		tee := io.TeeReader(r.Body, pipW)
-		pr.Body = io.NopCloser(tee)
-		sr.Body = io.NopCloser(pipR)
+	if r.Body != nil { // Body is strictly read-once, can't be cloned. So we multiplex it to secondary
+		prbuf, srbuf := getBuf(), getBuf()
+		defer putBuf(prbuf)
+		defer putBuf(srbuf)
+		pr.Body, sr.Body = duplex(r.Body, prbuf, srbuf)
 	}
 
 	wg := sync.WaitGroup{}

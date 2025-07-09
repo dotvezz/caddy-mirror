@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 )
@@ -93,4 +94,18 @@ func (w *NopResponseWriter) WriteHeader(status int) {
 
 func (w *NopResponseWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
+}
+
+type PassthroughCloser struct {
+	io.Reader
+	io.Closer
+}
+
+// duplex duplicates a single io.ReadCloser across two io.ReadClosers
+// TODO: Strategy to reduce or eliminate the need for the buffers
+func duplex(r io.ReadCloser, pbuf, sbuf *bytes.Buffer) (io.ReadCloser, io.ReadCloser) {
+	defer r.Close()
+	io.Copy(pbuf, r)
+	sbuf.Write(pbuf.Bytes())
+	return io.NopCloser(pbuf), io.NopCloser(sbuf)
 }
