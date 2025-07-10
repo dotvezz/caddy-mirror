@@ -28,6 +28,9 @@ In no particular order, the following feature goals are being actively considere
 a `v1.0.0` release.
 
 - Decoding compressed response bodies for comparison
+- Low-overhead request multiplexing
+  - Currently, the request is buffered and copied before sending to the primary and secondary handlers. This introduces
+    latency and increases memory usage. 
 - Low-overhead response body comparison
   - Currently, if response body comparison is enabled, this project buffers responses and compares them as `[]byte`.
   - Ideally, we'd be able to do (at least optionally) perform direct comparisons as the response is streamed, without
@@ -38,7 +41,7 @@ a `v1.0.0` release.
     - Messages over a configurable message queue (Kafka, SQS, etc)
     - Some companion API service that can run separately from your Caddy server and collate reports
 - Optional blocking rules
-- Benchmarks to help possible users understand any performance implications of using the module.
+- Tests and benchmarks to help users evaluate the safety and performance implications of using this module.
 
 ## Building with `xcaddy`
 
@@ -46,7 +49,7 @@ As with all Caddy plugin modules, you can use the [`xcaddy`](https://github.com/
 Caddy with this plugin included.
 
 ```sh
-> xcaddy build --with github.com/dotvezz/caddy-shadow
+> xcaddy build --with github.com/dotvezz/caddy-mirror
 ```
 
 ## Caddyfile
