@@ -15,3 +15,6 @@ debug:
 
 run:
 	./caddy run
+
+test:
+	go test -v ./...
