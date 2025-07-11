@@ -186,6 +186,8 @@ func (h *Handler) shouldMirror() bool {
 	case 1:
 		return true
 	case 0:
+		return true
+	case -1:
 		return false
 	default:
 		return rand.Float64() < h.MirrorRate
