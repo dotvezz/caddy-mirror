@@ -14,10 +14,69 @@ import (
 	"time"
 )
 
+type sloggerMock struct {
+	err  func(str string, in ...any)
+	info func(str string, in ...any)
+}
+
+func (s *sloggerMock) Error(str string, in ...any) {
+	if s.err != nil {
+		s.err(str, in...)
+	}
+}
+
+func (s *sloggerMock) Info(str string, in ...any) {
+	if s.info != nil {
+		s.info(str, in...)
+	}
+}
+
 type middlewareHandlerFunc func(http.ResponseWriter, *http.Request, caddyhttp.Handler) error
 
 func (f middlewareHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	return f(w, r, next)
+}
+
+func TestHandler_ServeHTTP(t *testing.T) {
+	hnd := &Handler{
+		ComparisonConfig: ComparisonConfig{
+			CompareBody: true,
+		},
+		primary: middlewareHandlerFunc(func(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Hi, world!"))
+			return nil
+		}),
+		secondary: middlewareHandlerFunc(func(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Hello, world!"))
+			return nil
+		}),
+		slogger: slog.New(slog.NewJSONHandler(os.Stdout, nil)),
+	}
+	r, _ := http.NewRequest("GET", "http://example.com", nil)
+	r = r.WithContext(context.WithValue(r.Context(), caddyhttp.VarsCtxKey, make(map[string]any)))
+
+	mismatched := false
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	slog := &sloggerMock{
+		info: func(str string, in ...any) {
+			defer wg.Done()
+			mismatched = true
+		},
+	}
+
+	hnd.slogger = slog
+	hnd.now = time.Now
+
+	hnd.ServeHTTP(&NopResponseWriter{}, r, nil)
+	wg.Wait()
+
+	if !mismatched {
+		t.Errorf("Expected mismatched to be true")
+	}
 }
 
 func TestHandler_ServeHTTPWithComparisons(t *testing.T) {
@@ -84,7 +143,7 @@ func TestHandler_ServeHTTPWithComparisons(t *testing.T) {
 					return middlewareHandlerFunc(func(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 						defer done()
 						if r.Method != "POST" {
-							return fmt.Errorf("expected GET, got %s", r.Method)
+							return fmt.Errorf("expected POST, got %s", r.Method)
 						}
 						bs, err := io.ReadAll(r.Body)
 						if err != nil {
@@ -102,7 +161,7 @@ func TestHandler_ServeHTTPWithComparisons(t *testing.T) {
 					return middlewareHandlerFunc(func(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 						defer done()
 						if r.Method != "POST" {
-							return fmt.Errorf("expected GET, got %s", r.Method)
+							return fmt.Errorf("expected POST, got %s", r.Method)
 						}
 						bs, err := io.ReadAll(r.Body)
 						if err != nil {
@@ -131,6 +190,62 @@ func TestHandler_ServeHTTPWithComparisons(t *testing.T) {
 					return nil
 				}),
 			},
+		},
+		{
+			name: "negative test post",
+			fields: fields{
+				secondary: func(done func()) caddyhttp.MiddlewareHandler {
+					return middlewareHandlerFunc(func(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+						defer done()
+						if r.Method != "POST" {
+							return fmt.Errorf("expected POST, got %s", r.Method)
+						}
+						bs, err := io.ReadAll(r.Body)
+						if err != nil {
+							return nil
+						}
+						if string(bs) != "Hello, world!" {
+							return fmt.Errorf("expected Hello, world!, got %s", string(bs))
+						}
+						w.WriteHeader(http.StatusOK)
+						w.Write(bs)
+						return nil
+					})
+				},
+				primary: func(done func()) caddyhttp.MiddlewareHandler {
+					return middlewareHandlerFunc(func(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+						defer done()
+						if r.Method != "POST" {
+							return fmt.Errorf("expected POST, got %s", r.Method)
+						}
+						bs, err := io.ReadAll(r.Body)
+						if err != nil {
+							return nil
+						}
+						if string(bs) != "Oh hi, world!" {
+							return fmt.Errorf("expected Hello, world!, got %s", string(bs))
+						}
+						w.WriteHeader(http.StatusOK)
+						w.Write(bs)
+						return nil
+					})
+				},
+			},
+			args: args{
+				w: &NopResponseWriter{
+					header: make(http.Header),
+					status: 0,
+				},
+				r: func() *http.Request {
+					r, _ := http.NewRequest("POST", "http://example.com", strings.NewReader("Hello, world!"))
+					r = r.WithContext(context.WithValue(r.Context(), caddyhttp.VarsCtxKey, make(map[string]any)))
+					return r
+				}(),
+				next: caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+					return nil
+				}),
+			},
+			wantErr: true,
 		},
 	}
 
