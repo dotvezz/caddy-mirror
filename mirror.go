@@ -152,7 +152,7 @@ func (h *Handler) requestProcessor(name string, inner caddyhttp.MiddlewareHandle
 		// Even though there may be a timeout provided by another handler, we really want to make sure we keep our
 		// goroutines tidy. We're enforcing a timeout on all request processing as mitigation for the possibility of
 		// goroutine leaks and connection leaks.
-		ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), h.timeout)
 		defer cancel()
 		r = r.WithContext(ctx)
 		startedAt := h.now()
