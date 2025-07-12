@@ -36,6 +36,11 @@ func putBuf(buf *bytes.Buffer) {
 	bufferPool.Put(buf)
 }
 
+type slogger interface {
+	Error(string, ...any)
+	Info(string, ...any)
+}
+
 // Handler runs multiple handlers and aggregates their results
 type Handler struct {
 	ComparisonConfig
@@ -53,7 +58,7 @@ type Handler struct {
 
 	MirrorRate float64 `json:"mirror_rate,omitempty"`
 
-	slogger *slog.Logger
+	slogger slogger
 	now     func() time.Time
 }
 

@@ -2,7 +2,6 @@ package mirror
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -12,19 +11,6 @@ import (
 )
 
 type LogLevel string
-
-const levelDebug LogLevel = "debug"
-const levelInfo LogLevel = "info"
-const levelError LogLevel = "error"
-
-func (ll *LogLevel) UnmarshalJSON(b []byte) error {
-	if !slices.Contains([]LogLevel{levelDebug, levelInfo, levelError}, LogLevel(b)) {
-		return fmt.Errorf("unknown log level: %s", string(b))
-	}
-
-	*ll = LogLevel(b)
-	return nil
-}
 
 type JQQuery string
 
