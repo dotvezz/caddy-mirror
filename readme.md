@@ -110,7 +110,7 @@ http://localhost:8080 {
 >     slower than your primary). We take care not to leak them, but they can live roughly as long as the
 >     `shadow_timeout` config value.
 
-caddy-shadow provides a set of simple, optional features for comparing the shadowed response against the primary
+caddy-mirror provides a set of simple, optional features for comparing the shadowed response against the primary
 response.
 
 - Straight comparison of response body

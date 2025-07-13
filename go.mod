@@ -1,4 +1,4 @@
-module gitub.com/dotvezz/caddy-shadow
+module github.com/dotvezz/caddy-mirror
 
 go 1.24.3
 

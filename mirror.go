@@ -69,19 +69,23 @@ func (h Handler) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
+func cloneRequest(r *http.Request) *http.Request {
+	ctx := r.Context()
+	ctx = context.WithValue(
+		ctx,
+		caddyhttp.VarsCtxKey,
+		maps.Clone( // The vars map isn't concurrency safe, so we'll clone it for the mirrored request
+			ctx.Value(caddyhttp.VarsCtxKey).(map[string]any),
+		),
+	)
+
+	return r.Clone(ctx)
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) (err error) {
 	if !h.shouldMirror() { // Fractional mirroring. If this returns false, we only call primary
 		return h.primary.ServeHTTP(w, r, next)
 	}
-
-	primaryCtx := r.Context()
-
-	// The vars map isn't concurrency safe, so we'll clone it for the mirrored request
-	secondaryCtx := context.WithValue(
-		primaryCtx,
-		caddyhttp.VarsCtxKey,
-		maps.Clone(primaryCtx.Value(caddyhttp.VarsCtxKey).(map[string]any)),
-	)
 
 	var primaryBuf, shadowBuf *bytes.Buffer
 	if h.shouldCompare() { // Only prepare buffers if we anticipate needing them for secondary response comparison
@@ -90,18 +94,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		defer putBuf(shadowBuf)
 	}
 
+	sr := cloneRequest(r)
+
 	pRecorder := caddyhttp.NewResponseRecorder(w, primaryBuf, h.shouldBuffer)
 	sRecorder := caddyhttp.NewResponseRecorder(&NopResponseWriter{}, shadowBuf, h.shouldBuffer)
-
-	// Clone the request to help ensure that concurrent upstream handlers don't step on each other
-	pr := r.Clone(primaryCtx)
-	sr := r.Clone(secondaryCtx)
 
 	if r.Body != nil { // Body is strictly read-once, can't be cloned. So we multiplex it to secondary
 		prbuf, srbuf := getBuf(), getBuf()
 		defer putBuf(prbuf)
 		defer putBuf(srbuf)
-		pr.Body, sr.Body = duplex(r.Body, prbuf, srbuf)
+		r.Body, sr.Body = duplex(r.Body, prbuf, srbuf)
 	}
 
 	wg := sync.WaitGroup{}
@@ -114,7 +116,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		}
 	}()
 
-	err = h.requestProcessor("primary", h.primary)(pRecorder, pr, next)
+	err = h.requestProcessor("primary", h.primary)(pRecorder, r, next)
 	if err != nil {
 		return err
 	}
