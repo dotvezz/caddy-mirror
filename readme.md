@@ -1,5 +1,10 @@
 # caddy-mirror
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/dotvezz/caddy-mirror)](https://goreportcard.com/report/github.com/dotvezz/caddy-mirror)
+[![GitHub (Pre-)Release Date](https://img.shields.io/github/release-date-pre/dotvezz/caddy-mirror)](https://github.com/dotvezz/caddy-mirror/releases/)
+[![Latest Release](https://badgen.net/github/release/dotvezz/caddy-mirror)](https://github.com/dotvezz/caddy-mirror/)
+[![Latest Commit](https://badgen.net/github/last-commit/dotvezz/caddy-mirror/main)](https://github.com/dotvezz/caddy-mirror/HEAD)
+
 > [!WARNING]
 > This project's configuration and behavior should be considered unstable until it reaches its first `v1.0.0` release.
 > Any change before `v1.0.0` may be a breaking change. If you choose to incorporate this into your xcaddy build,
