@@ -90,8 +90,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	var primaryBuf, shadowBuf *bytes.Buffer
 	if h.shouldCompare() { // Only prepare buffers if we anticipate needing them for secondary response comparison
 		primaryBuf, shadowBuf = getBuf(), getBuf()
-		defer putBuf(primaryBuf)
-		defer putBuf(shadowBuf)
 	}
 
 	sr := cloneRequest(r)
@@ -134,6 +132,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		// If we're doing comparison, let's spin up a new goroutine so we can avoid blocking. This way downstream
 		// handlers and clients are able to know we're done with our ResponseWriter here.
 		go func() {
+			defer putBuf(primaryBuf)
+			defer putBuf(shadowBuf)
 			// Wait for the mirrored request to complete before attempting to compare.
 			wg.Wait()
 			var sBytes []byte
